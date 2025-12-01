@@ -175,44 +175,78 @@ function render() {
             
             if (isVisible && projected) {
                 const group = d3.select(this);
+                const color = getColorForIntensity(d.intensity).color;
                 
-                // Add glow effect
+                // Define radial gradient for smooth look
+                const gradientId = `grad-${d.name.replace(/\s+/g, '-')}`;
+                const defs = svg.append("defs");
+                const gradient = defs.append("radialGradient")
+                    .attr("id", gradientId)
+                    .attr("cx", "50%")
+                    .attr("cy", "50%")
+                    .attr("r", "50%")
+                    .attr("fx", "50%")
+                    .attr("fy", "50%");
+                
+                gradient.append("stop")
+                    .attr("offset", "0%")
+                    .style("stop-color", color)
+                    .style("stop-opacity", 0.8);
+                
+                gradient.append("stop")
+                    .attr("offset", "100%")
+                    .style("stop-color", color)
+                    .style("stop-opacity", 0);
+
+                // Add large glow effect using gradient
                 group.append("circle")
                     .attr("class", "hotspot-glow")
                     .attr("cx", projected[0])
                     .attr("cy", projected[1])
-                    .attr("r", 15 + (d.intensity / 8))
-                    .attr("fill", getColorForIntensity(d.intensity).color)
-                    .attr("opacity", 0.3);
+                    .attr("r", 30 + (d.intensity / 4)) // Larger smooth gradient
+                    .style("fill", `url(#${gradientId})`);
                 
-                // Add main circle
+                // Add main circle (core)
                 const hotspot = group.append("circle")
                     .attr("class", "hotspot")
                     .attr("cx", projected[0])
                     .attr("cy", projected[1])
-                    .attr("r", 5 + (d.intensity / 15))
-                    .attr("fill", getColorForIntensity(d.intensity).color)
-                    .attr("opacity", 0.9)
+                    .attr("r", 4 + (d.intensity / 20))
+                    .attr("fill", color)
+                    .attr("stroke", "#000")
+                    .attr("stroke-width", 0.5)
                     .style("cursor", "pointer");
                 
+                // Add Text Label (Black text as requested)
+                group.append("text")
+                    .attr("class", "region-label")
+                    .attr("x", projected[0])
+                    .attr("y", projected[1] - 10) // Position slightly above
+                    .text(d.name.split(" - ")[0]) // Simplified name
+                    .style("font-size", "10px")
+                    .style("fill", "#000000")
+                    .style("font-weight", "bold")
+                    // Make label visible if high intensity or zoomed in
+                    .style("opacity", d.intensity > 60 || currentScale > 1.5 ? 1 : 0); 
+
                 // Better event handling for tooltip
                 let tooltipTimeout;
                 
                 hotspot.on("mouseenter", function(event) {
                     clearTimeout(tooltipTimeout);
-                    d3.select(this)
-                        .transition()
-                        .duration(200)
-                        .attr("r", 10 + (d.intensity / 15));
+                    d3.select(this.parentNode).select(".region-label").style("opacity", 1);
+                    d3.select(this).attr("stroke", "#fff");
                     showTooltip(event, d);
                 })
                 .on("mouseleave", function(event) {
+                    // Restore opacity state
+                    if (!(d.intensity > 60 || currentScale > 1.5)) {
+                        d3.select(this.parentNode).select(".region-label").style("opacity", 0);
+                    }
+                    d3.select(this).attr("stroke", "#000");
+                    
                     // Only hide tooltip if not moving to tooltip itself
                     tooltipTimeout = setTimeout(() => {
-                        d3.select(this)
-                            .transition()
-                            .duration(200)
-                            .attr("r", 5 + (d.intensity / 15));
                         hideTooltip();
                     }, 200);
                 })
