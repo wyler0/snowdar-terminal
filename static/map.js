@@ -281,8 +281,8 @@ class WorldMap {
         tooltip.innerHTML = `
             <div class="tooltip-title">${region.name}</div>
             <div class="tooltip-row">
-                <span>Base Depth:</span>
-                <span>${region.base_depth}"</span>
+                <span>90d Total:</span>
+                <span>${region.snow_90d}"</span>
             </div>
             <div class="tooltip-row">
                 <span>24h Snow:</span>

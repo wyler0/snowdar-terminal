@@ -5,32 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SNOWMAP</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Load D3.js from CDN -->
+    <!-- D3.js -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body>
-    <div id="map-container">
-        <svg id="world-map"></svg>
-    </div>
-    
-    <!-- UI Overlays -->
-    <div class="ui-overlay top-right">
-        <div class="timer-container">
-            <span class="blink">●</span> NEXT UPDATE: <span id="countdown">59:59</span>
+    <!-- CRT Overlay Effects -->
+    <div class="scanline"></div>
+    <div class="crt-flicker"></div>
+
+    <!-- Main Container -->
+    <div class="terminal-container">
+        <div id="map-container">
+            <svg id="world-map"></svg>
         </div>
-    </div>
-    
-    <div class="ui-overlay bottom-left">
-        <div class="logo">snowdar</div>
-    </div>
-    
-    <div class="ui-overlay bottom-right">
-        <button id="reset-btn" class="terminal-btn">[ RESET VIEW ]</button>
+
+        <!-- UI Overlays -->
+        <div class="ui-overlay">
+            <div class="logo">snowdar</div>
+            <div class="timer-container">
+                <span class="status-dot"></span>
+                <span id="countdown">NEXT UPDATE: --:--</span>
+            </div>
+            <button id="reset-btn" class="terminal-btn">[ RESET VIEW ]</button>
+            <div class="disclaimer">DATA FROM WEATHER MODELS - MAY DIFFER FROM RESORT REPORTS</div>
+        </div>
+
+        <!-- Tooltip -->
+        <div id="tooltip" class="tooltip"></div>
     </div>
 
-    <div id="tooltip" class="tooltip hidden"></div>
-    
     <script src="app.js"></script>
 </body>
 </html>
-

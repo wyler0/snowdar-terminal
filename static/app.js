@@ -1,6 +1,6 @@
 /**
  * SNOWMAP Terminal - 3D Globe Renderer
- * Interactive 3D globe with mouse rotation
+ * Simplified interaction model
  */
 
 // Configuration
@@ -9,12 +9,12 @@ const height = window.innerHeight;
 
 // Color scheme for intensity
 const colorScheme = [
-    { threshold: 0, color: '#001100', name: 'Minimal' },
-    { threshold: 20, color: '#003300', name: 'Light' },
-    { threshold: 40, color: '#00ff00', name: 'Moderate' },
-    { threshold: 60, color: '#ffff00', name: 'Heavy' },
-    { threshold: 80, color: '#ff6600', name: 'Extreme' },
-    { threshold: 95, color: '#ff0000', name: 'Epic' }
+    { threshold: 0, color: '#008800', name: 'Minimal' },
+    { threshold: 5, color: '#00ff00', name: 'Light' },
+    { threshold: 15, color: '#aaff00', name: 'Moderate' },
+    { threshold: 25, color: '#ffff00', name: 'Good' },
+    { threshold: 40, color: '#ff8800', name: 'Heavy' },
+    { threshold: 60, color: '#ff0000', name: 'Epic' }
 ];
 
 // Set up SVG
@@ -22,73 +22,76 @@ const svg = d3.select("#world-map")
     .attr("width", width)
     .attr("height", height);
 
-// Set up 3D orthographic projection (globe view)
-// Initial scale 1.2x
+// Set up 3D orthographic projection
 const initialScale = (Math.min(width, height) / 2.2) * 1.2;
 const projection = d3.geoOrthographic()
     .scale(initialScale)
     .translate([width / 2, height / 2])
     .clipAngle(90);
 
-// Path generator
 const pathGenerator = d3.geoPath().projection(projection);
 
-// Store regions data
+// State
 let regionsData = [];
 let geoData = null;
-
-// Rotation state
-let rotation = { x: 0, y: 0 };
+let autoRotateEnabled = true;
 let currentScale = 1;
+let hoveredRegion = null;
+
+// Tooltip element
+const tooltip = document.getElementById('tooltip');
 
 // Set up zoom behavior
 const zoom = d3.zoom()
-    .scaleExtent([0.5, 5])
-    .on("start", function() {
-        autoRotateEnabled = false;
-        clearTimeout(window.rotateTimeout);
-        hideTooltip(); // Hide tooltip when zooming/panning starts
+    .scaleExtent([0.5, 20])
+    .on("start", () => {
+        pauseAutoRotate();
+        hideTooltip();
     })
-    .on("zoom", function(event) {
-        const scale = event.transform.k;
-        projection.scale(Math.min(width, height) / 2.2 * scale);
-        
-        // Update globe sphere
-        svg.select(".globe-sphere")
-            .attr("r", projection.scale());
-        
+    .on("zoom", (event) => {
+        currentScale = event.transform.k;
+        projection.scale(Math.min(width, height) / 2.2 * currentScale);
+        svg.select(".globe-sphere").attr("r", projection.scale());
         render();
     })
-    .on("end", function() {
-        window.rotateTimeout = setTimeout(() => {
-            autoRotateEnabled = true;
-        }, 30000);
+    .on("end", () => {
+        resumeAutoRotateDelayed();
     });
 
-// Set up drag behavior for rotation
+// Set up drag behavior
 const drag = d3.drag()
-    .on("start", function() {
-        autoRotateEnabled = false;
-        clearTimeout(window.rotateTimeout);
-        hideTooltip(); // Hide tooltip when dragging starts
+    .on("start", () => {
+        pauseAutoRotate();
+        hideTooltip();
     })
-    .on("drag", function(event) {
+    .on("drag", (event) => {
         const rotate = projection.rotate();
-        // Invert rotation sensitivity based on zoom level to keep it natural
         const k = 75 / projection.scale();
         projection.rotate([rotate[0] + event.dx * k, rotate[1] - event.dy * k]);
         render();
     })
-    .on("end", function() {
-        window.rotateTimeout = setTimeout(() => {
-            autoRotateEnabled = true;
-        }, 30000);
+    .on("end", () => {
+        resumeAutoRotateDelayed();
     });
 
-// Apply behaviors to SVG
 svg.call(drag).call(zoom);
 
-// Add globe sphere background
+// Click on background to dismiss tooltip (for mobile)
+svg.on("click", function(event) {
+    if (hoveredRegion && event.target === this) {
+        // Reset all highlights
+        hotspotsGroup.selectAll(".hotspot-group").each(function() {
+            const g = d3.select(this);
+            g.select(".hotspot-ring").attr("opacity", 0.7);
+            g.select(".region-label").style("opacity", 0);
+        });
+        hoveredRegion = null;
+        hideTooltip();
+        resumeAutoRotateDelayed();
+    }
+});
+
+// Globe background
 svg.append("circle")
     .attr("class", "globe-sphere")
     .attr("cx", width / 2)
@@ -99,51 +102,37 @@ svg.append("circle")
     .attr("stroke-width", 2)
     .attr("opacity", 0.3);
 
-// Container for countries
+// Containers
 const countriesGroup = svg.append("g").attr("class", "countries");
-
-// Container for hotspots
 const hotspotsGroup = svg.append("g").attr("class", "hotspots");
 
-// Load world map from public GeoJSON
-const worldJsonUrl = "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson";
+// Load world map
+d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson")
+    .then(data => {
+        geoData = data;
+        countriesGroup.selectAll("path")
+            .data(geoData.features)
+            .enter()
+            .append("path")
+            .attr("class", "country");
+        loadSnowData();
+        render();
+    });
 
-d3.json(worldJsonUrl).then(data => {
-    geoData = data;
-    
-    // Draw initial countries
-    countriesGroup.selectAll("path")
-        .data(geoData.features)
-        .enter()
-        .append("path")
-        .attr("class", "country");
-    
-    // Load snow data and render
-    loadSnowData();
-    render();
-}).catch(error => {
-    console.error("Error loading map:", error);
-    alert("Could not load world map data");
-});
-
-// Load snow data from API
+// Load snow data
 function loadSnowData() {
     fetch('/api/snow-data')
-        .then(response => response.json())
+        .then(r => r.json())
         .then(data => {
-            regionsData = data.regions;
+            regionsData = data.regions.sort((a, b) => a.intensity - b.intensity);
             render();
-            startAnimation();
-        })
-        .catch(error => console.error('Error loading snow data:', error));
+        });
 }
 
 // Get color for intensity
 function getColorForIntensity(intensity) {
     for (let i = colorScheme.length - 1; i >= 0; i--) {
-        if (intensity >= colorScheme[i].threshold) {
-            return colorScheme[i];
-        }
+        if (intensity >= colorScheme[i].threshold) return colorScheme[i];
     }
     return colorScheme[0];
 }
@@ -152,285 +141,245 @@ function getColorForIntensity(intensity) {
 function render() {
     if (!geoData) return;
     
-    // Update country paths
-    countriesGroup.selectAll("path")
-        .attr("d", pathGenerator);
+    countriesGroup.selectAll("path").attr("d", pathGenerator);
+    hotspotsGroup.selectAll("*").remove();
     
-    // Remove existing hotspots
-    hotspotsGroup.selectAll(".hotspot-group").remove();
+    // Scale factor: points get BIGGER when zoomed in, smaller when zoomed out
+    // At zoom 1.0 = normal size, zoom 2.0 = 1.5x size, zoom 0.5 = 0.75x size
+    const scaleFactor = Math.max(0.6, Math.min(2.5, 0.5 + currentScale * 0.5));
     
-    // Render visible hotspots
-    const hotspots = hotspotsGroup.selectAll(".hotspot-group")
-        .data(regionsData)
-        .enter()
-        .append("g")
-        .attr("class", "hotspot-group")
-        .style("pointer-events", "all")
-        .each(function(d) {
-            const coords = [d.coords[0], d.coords[1]];
-            const projected = projection(coords);
+    regionsData.forEach(d => {
+        const coords = [d.coords[0], d.coords[1]];
+        const projected = projection(coords);
+        const isVisible = projected && d3.geoDistance(coords, projection.invert([width/2, height/2])) < Math.PI / 2;
+        
+        if (!isVisible || !projected) return;
+        
+        const color = getColorForIntensity(d.intensity).color;
+        const coreRadius = 3 * scaleFactor;
+        const ringRadius = (6 + (d.intensity / 25)) * scaleFactor;
+        
+        const group = hotspotsGroup.append("g")
+            .attr("class", "hotspot-group")
+            .datum(d);
+        
+        // Outer ring
+        group.append("circle")
+            .attr("class", "hotspot-ring")
+            .attr("cx", projected[0])
+            .attr("cy", projected[1])
+            .attr("r", ringRadius)
+            .attr("fill", "none")
+            .attr("stroke", color)
+            .attr("stroke-width", 1.5 * scaleFactor)
+            .attr("opacity", 0.7);
+        
+        // Core dot
+        group.append("circle")
+            .attr("class", "hotspot-core")
+            .attr("cx", projected[0])
+            .attr("cy", projected[1])
+            .attr("r", coreRadius)
+            .attr("fill", color);
+        
+        // Label (hidden by default)
+        group.append("text")
+            .attr("class", "region-label")
+            .attr("x", projected[0])
+            .attr("y", projected[1] - 12 * scaleFactor)
+            .text(d.name.split(" - ")[0])
+            .style("font-size", `${10 * scaleFactor}px`)
+            .style("fill", "#00ff00")
+            .style("text-shadow", "0 0 3px #000")
+            .style("font-weight", "bold")
+            .style("text-anchor", "middle")
+            .style("opacity", 0)
+            .style("pointer-events", "none");
+        
+        // Hit target - captures mouse AND touch events
+        const hitTarget = group.append("circle")
+            .attr("class", "hit-target")
+            .attr("cx", projected[0])
+            .attr("cy", projected[1])
+            .attr("r", Math.max(20, 15 * scaleFactor)) // Minimum 20px for touch
+            .attr("fill", "transparent")
+            .style("cursor", "pointer");
+        
+        // Desktop: hover events
+        hitTarget
+            .on("mouseenter", function(event) {
+                if (isTouchDevice) return; // Skip on touch devices
+                selectRegion(d, group, scaleFactor, event);
+            })
+            .on("mouseleave", function() {
+                if (isTouchDevice) return;
+                deselectRegion(group, scaleFactor);
+            })
+            .on("mousemove", function(event) {
+                if (hoveredRegion && !isTouchDevice) {
+                    positionTooltip(event);
+                }
+            });
+        
+        // Mobile: click/tap to toggle
+        hitTarget.on("click", function(event) {
+            event.stopPropagation();
             
-            // Check if point is visible (on front of globe)
-            const isVisible = projected && d3.geoDistance(coords, projection.invert([width/2, height/2])) < Math.PI / 2;
-            
-            if (isVisible && projected) {
-                const group = d3.select(this);
-                const color = getColorForIntensity(d.intensity).color;
-                
-                // Define radial gradient for smooth look
-                const gradientId = `grad-${d.name.replace(/\s+/g, '-')}`;
-                const defs = svg.append("defs");
-                const gradient = defs.append("radialGradient")
-                    .attr("id", gradientId)
-                    .attr("cx", "50%")
-                    .attr("cy", "50%")
-                    .attr("r", "50%")
-                    .attr("fx", "50%")
-                    .attr("fy", "50%");
-                
-                gradient.append("stop")
-                    .attr("offset", "0%")
-                    .style("stop-color", color)
-                    .style("stop-opacity", 0.8);
-                
-                gradient.append("stop")
-                    .attr("offset", "100%")
-                    .style("stop-color", color)
-                    .style("stop-opacity", 0);
-
-                // Add large glow effect using gradient
-                group.append("circle")
-                    .attr("class", "hotspot-glow")
-                    .attr("cx", projected[0])
-                    .attr("cy", projected[1])
-                    .attr("r", 30 + (d.intensity / 4)) // Larger smooth gradient
-                    .style("fill", `url(#${gradientId})`);
-                
-                // Add main circle (core)
-                const hotspot = group.append("circle")
-                    .attr("class", "hotspot")
-                    .attr("cx", projected[0])
-                    .attr("cy", projected[1])
-                    .attr("r", 4 + (d.intensity / 20))
-                    .attr("fill", color)
-                    .attr("stroke", "#000")
-                    .attr("stroke-width", 0.5)
-                    .style("cursor", "pointer");
-                
-                // Add Text Label (Black text as requested)
-                group.append("text")
-                    .attr("class", "region-label")
-                    .attr("x", projected[0])
-                    .attr("y", projected[1] - 10) // Position slightly above
-                    .text(d.name.split(" - ")[0]) // Simplified name
-                    .style("font-size", "10px")
-                    .style("fill", "#000000")
-                    .style("font-weight", "bold")
-                    // Make label visible if high intensity or zoomed in
-                    .style("opacity", d.intensity > 60 || currentScale > 1.5 ? 1 : 0); 
-
-                // Better event handling for tooltip
-                let tooltipTimeout;
-                
-                hotspot.on("mouseenter", function(event) {
-                    clearTimeout(tooltipTimeout);
-                    d3.select(this.parentNode).select(".region-label").style("opacity", 1);
-                    d3.select(this).attr("stroke", "#fff");
-                    showTooltip(event, d);
-                })
-                .on("mouseleave", function(event) {
-                    // Restore opacity state
-                    if (!(d.intensity > 60 || currentScale > 1.5)) {
-                        d3.select(this.parentNode).select(".region-label").style("opacity", 0);
-                    }
-                    d3.select(this).attr("stroke", "#000");
-                    
-                    // Only hide tooltip if not moving to tooltip itself
-                    tooltipTimeout = setTimeout(() => {
-                        hideTooltip();
-                    }, 200);
-                })
-                .on("click", (event) => {
-                    event.stopPropagation();
-                    console.log("Clicked region:", d.name);
-                });
+            if (hoveredRegion === d) {
+                // Already selected, deselect
+                deselectRegion(group, scaleFactor);
+            } else {
+                // Deselect previous if any
+                if (hoveredRegion) {
+                    hotspotsGroup.selectAll(".hotspot-group").each(function() {
+                        const g = d3.select(this);
+                        g.select(".hotspot-ring").attr("opacity", 0.7).attr("stroke-width", 1.5 * scaleFactor);
+                        g.select(".region-label").style("opacity", 0);
+                    });
+                }
+                // Select this one
+                selectRegion(d, group, scaleFactor, event);
             }
         });
+    });
 }
 
-// Animation for pulsing hotspots
-function startAnimation() {
-    function pulse() {
-        hotspotsGroup.selectAll(".hotspot")
-            .transition()
-            .duration(1500)
-            .attr("opacity", 0.7)
-            .transition()
-            .duration(1500)
-            .attr("opacity", 0.9)
-            .on("end", pulse);
-    }
-    pulse();
+// Detect touch device
+const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+// Select a region (highlight + show tooltip)
+function selectRegion(d, group, scaleFactor, event) {
+    hoveredRegion = d;
+    pauseAutoRotate();
+    
+    group.select(".hotspot-ring").attr("opacity", 1).attr("stroke-width", 2.5 * scaleFactor);
+    group.select(".region-label").style("opacity", 1);
+    group.raise();
+    
+    showTooltip(event, d);
+}
+
+// Deselect region (reset highlight + hide tooltip)
+function deselectRegion(group, scaleFactor) {
+    hoveredRegion = null;
+    
+    group.select(".hotspot-ring").attr("opacity", 0.7).attr("stroke-width", 1.5 * scaleFactor);
+    group.select(".region-label").style("opacity", 0);
+    
+    hideTooltip();
+    resumeAutoRotateDelayed();
 }
 
 // Tooltip functions
 function showTooltip(event, region) {
-    const tooltip = document.getElementById('tooltip');
     const colorInfo = getColorForIntensity(region.intensity);
     
     tooltip.innerHTML = `
         <div class="tooltip-title">${region.name}</div>
-        <div class="tooltip-row">
-            <span>Base Depth:</span>
-            <span>${region.base_depth}"</span>
-        </div>
-        <div class="tooltip-row">
-            <span>24h Snow:</span>
-            <span>${region.new_snow_24h}"</span>
-        </div>
-        <div class="tooltip-row">
-            <span>7d Snow:</span>
-            <span>${region.new_snow_7d}"</span>
-        </div>
-        <div class="tooltip-row">
-            <span>Intensity:</span>
-            <span style="color: ${colorInfo.color}">${region.intensity} (${colorInfo.name})</span>
-        </div>
-        <div class="tooltip-row">
-            <span>Resorts:</span>
-            <span>${region.resort_count}</span>
-        </div>
+        <div class="tooltip-row"><span>90d Total:</span><span>${region.snow_90d}"</span></div>
+        <div class="tooltip-row"><span>24h Snow:</span><span>${region.new_snow_24h}"</span></div>
+        <div class="tooltip-row"><span>7d Snow:</span><span>${region.new_snow_7d}"</span></div>
+        <div class="tooltip-row"><span>Intensity:</span><span style="color:${colorInfo.color}">${region.intensity} (${colorInfo.name})</span></div>
     `;
     
-    tooltip.classList.remove('hidden');
+    tooltip.style.display = 'block';
+    positionTooltip(event);
+}
+
+function positionTooltip(event) {
+    // Handle both mouse and touch events
+    let clientX, clientY;
     
-    // Position tooltip using client coordinates
-    const x = event.clientX + 15;
-    const y = event.clientY + 15;
-    const tooltipWidth = 220;
-    const tooltipHeight = 200;
-    
-    // Keep within viewport bounds
-    let finalX = x;
-    let finalY = y;
-    
-    if (x + tooltipWidth > window.innerWidth) {
-        finalX = event.clientX - tooltipWidth - 15;
+    if (event.touches && event.touches.length > 0) {
+        clientX = event.touches[0].clientX;
+        clientY = event.touches[0].clientY;
+    } else if (event.changedTouches && event.changedTouches.length > 0) {
+        clientX = event.changedTouches[0].clientX;
+        clientY = event.changedTouches[0].clientY;
+    } else {
+        clientX = event.clientX;
+        clientY = event.clientY;
     }
     
-    if (y + tooltipHeight > window.innerHeight) {
-        finalY = event.clientY - tooltipHeight - 15;
+    let x = clientX + 15;
+    let y = clientY + 15;
+    
+    // Keep in viewport
+    if (x + 220 > window.innerWidth) x = clientX - 235;
+    if (y + 180 > window.innerHeight) y = clientY - 195;
+    
+    // On mobile, position tooltip at top of screen if it would be off-screen
+    if (isTouchDevice) {
+        x = Math.max(10, Math.min(x, window.innerWidth - 230));
+        y = Math.max(10, Math.min(y, window.innerHeight - 190));
     }
     
-    tooltip.style.left = finalX + 'px';
-    tooltip.style.top = finalY + 'px';
-    
-    // Keep tooltip visible when hovering over it
-    tooltip.onmouseenter = () => {
-        clearTimeout(window.tooltipTimeout);
-        autoRotateEnabled = false; // Stop rotation while reading
-    };
-    
-    tooltip.onmouseleave = () => {
-        hideTooltip();
-        window.rotateTimeout = setTimeout(() => {
-            autoRotateEnabled = true;
-        }, 30000);
-    };
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
 }
 
 function hideTooltip() {
-    const tooltip = document.getElementById('tooltip');
-    tooltip.classList.add('hidden');
+    tooltip.style.display = 'none';
 }
 
-// Auto-rotate globe slowly
-let autoRotateEnabled = true;
+// Auto-rotate
+let rotateTimeout = null;
+
+function pauseAutoRotate() {
+    autoRotateEnabled = false;
+    if (rotateTimeout) clearTimeout(rotateTimeout);
+}
+
+function resumeAutoRotateDelayed() {
+    if (rotateTimeout) clearTimeout(rotateTimeout);
+    rotateTimeout = setTimeout(() => {
+        if (!hoveredRegion) autoRotateEnabled = true;
+    }, 30000);
+}
+
 function autoRotate() {
-    if (autoRotateEnabled) {
+    if (autoRotateEnabled && !hoveredRegion) {
         const rotate = projection.rotate();
-        projection.rotate([rotate[0] + 0.2, rotate[1]]);
+        projection.rotate([rotate[0] + 0.15, rotate[1]]);
         render();
     }
     requestAnimationFrame(autoRotate);
 }
-
-// Disable auto-rotate when user interacts with SVG (backup handler)
-svg.on("mousedown", () => { 
-    autoRotateEnabled = false; 
-    clearTimeout(window.rotateTimeout);
-});
-
-// Start auto-rotation
 autoRotate();
 
-// Handle window resize
-window.addEventListener('resize', () => {
-    location.reload();
-});
-
-// Reset View Logic
+// Reset View
 document.getElementById('reset-btn').addEventListener('click', () => {
-    // Target scale is 1.2x base scale
     const baseScale = Math.min(width, height) / 2.2;
-    const targetScale = baseScale * 1.2;
-    const zoomLevel = 1.2; // Corresponds to the scale multiplier
-    
-    // Reset projection to target state
-    projection
-        .scale(targetScale)
-        .rotate([0, 0]);
-    
-    // Update sphere size
-    svg.select(".globe-sphere")
-        .attr("r", projection.scale());
-    
-    // Apply zoom transform cleanly to match the projection scale
-    // We use d3.zoomIdentity.scale(zoomLevel) so future zooms start from 1.2x
-    svg.transition()
-        .duration(750)
-        .call(zoom.transform, d3.zoomIdentity.scale(zoomLevel))
-        .on("end", () => {
-            // Force a render to ensure everything is aligned
-            render();
-            
-            // Resume auto-rotation immediately
-            autoRotateEnabled = true;
-            clearTimeout(window.rotateTimeout);
-            
-            // Reset manual rotation state
-            rotation = { x: 0, y: 0 };
-        });
-        
+    projection.scale(baseScale * 1.2).rotate([0, 0]);
+    svg.select(".globe-sphere").attr("r", projection.scale());
+    currentScale = 1.2;
+    svg.call(zoom.transform, d3.zoomIdentity.scale(1.2));
     render();
+    autoRotateEnabled = true;
 });
 
-// Countdown Timer Logic
-let nextUpdateTime = Date.now() + (60 * 60 * 1000);
+// Countdown Timer
+let nextUpdateTime = Date.now() + 3600000;
 
 function updateCountdown() {
-    const now = Date.now();
-    const diff = nextUpdateTime - now;
-    
+    const diff = nextUpdateTime - Date.now();
     if (diff <= 0) {
-        nextUpdateTime = Date.now() + (60 * 60 * 1000);
+        nextUpdateTime = Date.now() + 3600000;
         loadSnowData();
         return;
     }
-    
-    const minutes = Math.floor(diff / 60000);
-    const seconds = Math.floor((diff % 60000) / 1000);
-    
-    document.getElementById('countdown').textContent = 
-        `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const m = Math.floor(diff / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    document.getElementById('countdown').textContent = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
 }
-
 setInterval(updateCountdown, 1000);
 updateCountdown();
 
-// Auto-refresh data every hour
+// Auto-refresh hourly
 setInterval(() => {
-    console.log('Auto-refreshing snow data...');
     loadSnowData();
-    nextUpdateTime = Date.now() + (60 * 60 * 1000);
-}, 60 * 60 * 1000);
+    nextUpdateTime = Date.now() + 3600000;
+}, 3600000);
+
+// Resize
+window.addEventListener('resize', () => location.reload());

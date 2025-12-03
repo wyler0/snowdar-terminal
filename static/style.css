@@ -21,6 +21,7 @@ body {
 #map-container {
     width: 100vw;
     height: 100vh;
+    position: relative;
 }
 
 #world-map {
@@ -31,67 +32,49 @@ body {
 
 /* Country paths */
 .country {
-    fill: none;
-    stroke: #00ff00;
+    fill: #001100; /* Very dark green fill for better contrast */
+    stroke: #004400; /* Darker stroke */
     stroke-width: 0.5;
-    opacity: 0.6;
+    opacity: 1;
 }
 
-/* Hotspot circles */
-.hotspot {
-    cursor: pointer;
-    transition: r 0.2s;
-}
-
-.hotspot:hover {
-    r: 12;
-}
-
-/* UI Overlays */
+/* UI Overlays Container */
 .ui-overlay {
     position: absolute;
-    padding: 20px;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     pointer-events: none;
     z-index: 50;
 }
 
-.top-right {
-    top: 0;
-    right: 0;
+/* Logo - Bottom Left */
+.logo {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    font-size: 16px;
+    letter-spacing: 2px;
+    opacity: 0.7;
+    text-shadow: 0 0 5px #00ff00;
 }
 
-.bottom-left {
-    bottom: 0;
-    left: 0;
-}
-
-.bottom-right {
-    bottom: 0;
-    right: 0;
-}
-
-/* Timer */
+/* Timer - Top Right */
 .timer-container {
+    position: absolute;
+    top: 20px;
+    right: 20px;
     font-size: 14px;
     letter-spacing: 1px;
     text-shadow: 0 0 5px #00ff00;
 }
 
-/* Logo */
-.logo {
-    font-size: 16px;
-    font-weight: normal;
-    letter-spacing: 2px;
-    border: none;
-    padding: 0;
-    box-shadow: none;
-    text-shadow: 0 0 5px #00ff00;
-    opacity: 0.7;
-    font-family: 'Courier New', monospace;
-}
-
-/* Reset Button */
+/* Reset Button - Bottom Right */
 .terminal-btn {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
     background: transparent;
     border: none;
     color: #00ff00;
@@ -109,35 +92,39 @@ body {
     text-shadow: 0 0 8px #00ff00;
 }
 
-/* Blink animation */
-@keyframes blink {
-    0%, 49% { opacity: 1; }
-    50%, 100% { opacity: 0; }
-}
-
-.blink {
-    animation: blink 1s step-end infinite;
+/* Disclaimer - Bottom Center */
+.disclaimer {
+    position: absolute;
+    bottom: 10px;
+    width: 100%;
+    text-align: center;
+    font-size: 10px;
+    opacity: 0.4;
+    letter-spacing: 1px;
+    pointer-events: none;
 }
 
 /* Tooltip */
 .tooltip {
     position: absolute;
     background: rgba(0, 0, 0, 0.95);
-    border: 2px solid #00ff00;
+    border: 1px solid #00ff00;
     padding: 10px 15px;
     font-size: 11px;
-    pointer-events: auto;
-    z-index: 100;
-    box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+    pointer-events: none; /* Don't block mouse events */
+    z-index: 1000;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
     min-width: 200px;
+    display: none; /* Hidden by default */
 }
 
 .tooltip-title {
     font-weight: bold;
     font-size: 13px;
     margin-bottom: 8px;
-    border-bottom: 1px solid #00ff00;
+    border-bottom: 1px solid #004400;
     padding-bottom: 5px;
+    color: #00ff00;
 }
 
 .tooltip-row {
@@ -145,8 +132,3 @@ body {
     justify-content: space-between;
     margin: 4px 0;
 }
-
-.hidden {
-    display: none !important;
-}
-
