@@ -4,6 +4,8 @@ A retro terminal-style 3D globe visualization showing **real-time snow condition
 
 ![Snowdar Terminal](https://img.shields.io/badge/Status-Live-green) ![Node.js](https://img.shields.io/badge/Node.js-18+-blue) ![License](https://img.shields.io/badge/License-MIT-yellow)
 
+
+![Hosted here](https://snowdar-terminal.onrender.com) via Render.com
 ---
 
 ## 🚀 Features
